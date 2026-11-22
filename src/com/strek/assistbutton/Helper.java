@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit;
  */
 public final class Helper {
 
-    static final int VERSION = 2;
+    static final int VERSION = 4;
 
     static final int TX_PING = IBinder.FIRST_CALL_TRANSACTION;
     static final int TX_CTS = IBinder.FIRST_CALL_TRANSACTION + 1;
@@ -46,6 +46,8 @@ public final class Helper {
     private static Object activityManager;
     private static final Binder SERVICE = new ServiceBinder();
     private static volatile int lastDeliveredPid = -1;
+    @SuppressWarnings("unused") // Held for the process lifetime.
+    private static android.net.LocalServerSocket singleInstanceLock;
 
     private Helper() {
     }
@@ -54,6 +56,13 @@ public final class Helper {
     public static void main(String[] args) throws Exception {
         appUid = Integer.parseInt(args[0]);
         File apk = new File(args[1]);
+        // Single instance: an abstract socket name can be bound only once.
+        try {
+            singleInstanceLock = new android.net.LocalServerSocket("com.strek.assistbutton.helper.lock");
+        } catch (Exception e) {
+            log("another helper is already running, exiting");
+            return;
+        }
         Looper.prepareMainLooper();
         activityManager = Class.forName("android.app.ActivityManager")
                 .getMethod("getService").invoke(null);
@@ -62,16 +71,20 @@ public final class Helper {
         deliverBinder();
 
         // Exit when the app is updated or removed: the next press starts a fresh helper.
+        // Also leaves an "alive" heartbeat in the log, to see when (and why) it died.
+        log("helper v" + VERSION + " started, pid " + android.os.Process.myPid());
         Thread watcher = new Thread(() -> {
             while (true) {
                 try {
-                    Thread.sleep(30_000);
+                    Thread.sleep(20_000);
                 } catch (InterruptedException ignored) {
                     // Keep watching.
                 }
                 if (!apk.exists()) {
+                    log("app updated or removed, exiting");
                     System.exit(0);
                 }
+                log("alive");
             }
         }, "apk-watcher");
         watcher.setDaemon(true);
@@ -210,6 +223,15 @@ public final class Helper {
         }
     }
 
+    private static void log(String message) {
+        System.out.println(stamp() + " " + message);
+        System.out.flush();
+    }
+
+    private static String stamp() {
+        return new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date());
+    }
+
     // ------------------------------------------------------------------ shell
 
     /** Runs a shell command as this (shell) user and returns stdout + stderr. */
@@ -246,10 +268,21 @@ public final class Helper {
         }
     }
 
-    /** Shell command that starts the helper in the background, detached from the ADB session. */
+    /**
+     * Shell command that starts the helper in the background, detached from the ADB session.
+     *
+     * <p>Processes started by adbd live in adbd's cgroup, and when adbd stops (USB
+     * unplugged and Wireless debugging off) init kills that whole cgroup. Like
+     * Shizuku's starter, move the process to the root cgroups first, then exec
+     * app_process (same PID).
+     */
     static String startCommand(String apkPath, int appUid) {
-        return "CLASSPATH=" + apkPath
-                + " setsid app_process /system/bin " + Helper.class.getName()
-                + " " + appUid + " " + apkPath + " </dev/null >/data/local/tmp/assistbutton-helper.log 2>&1 &";
+        String escape = "for c in /sys/fs/cgroup /acct /dev/cg2_bpf /dev/memcg/apps; do"
+                + " [ -w $c/cgroup.procs ] && echo $$ >> $c/cgroup.procs;"
+                + " done 2>/dev/null; cat /proc/self/cgroup;";
+        return "CLASSPATH=" + apkPath + " setsid sh -c '" + escape
+                + " exec app_process /system/bin " + Helper.class.getName()
+                + " " + appUid + " " + apkPath + "'"
+                + " </dev/null >>/data/local/tmp/assistbutton-helper.log 2>&1 &";
     }
 }

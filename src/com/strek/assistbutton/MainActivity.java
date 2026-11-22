@@ -111,16 +111,33 @@ public class MainActivity extends Activity {
         } else {
             L.i("no helper binder");
         }
+        // Restarting the helper needs Wireless debugging, i.e. a Wi-Fi network.
+        // Without one, don't make the user wait: fall back right away.
+        if (!onWifi(app)) {
+            L.i("no helper and no Wi-Fi: falling back");
+            return false;
+        }
         String apk = app.getApplicationInfo().sourceDir;
         int uid = app.getApplicationInfo().uid;
         String out = AdbManager.runIsolated(app,
-                Helper.startCommand(apk, uid) + " " + Commands.OPEN_CIRCLE_TO_SEARCH, 8500);
+                Helper.startCommand(apk, uid) + " " + Commands.OPEN_CIRCLE_TO_SEARCH, 6000);
         L.i("adb start+cts: " + (out == null ? "null" : out.trim()));
         return out != null && out.contains(Commands.SUCCESS);
     }
 
+    private static boolean onWifi(Context context) {
+        android.net.ConnectivityManager cm = context.getSystemService(android.net.ConnectivityManager.class);
+        for (android.net.Network network : cm.getAllNetworks()) {
+            android.net.NetworkCapabilities caps = cm.getNetworkCapabilities(network);
+            if (caps != null && caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Leaves room for a reconnect plus restarting a stuck Google app.
-    private static final long ADB_TIMEOUT_MS = 10000;
+    private static final long ADB_TIMEOUT_MS = 8000;
     private volatile boolean adbDone;
 
     private void onAdbResult(boolean success, boolean timedOut) {

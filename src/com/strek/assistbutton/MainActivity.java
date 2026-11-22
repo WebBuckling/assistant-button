@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.WindowManager;
 import android.widget.Toast;
 
@@ -28,6 +29,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        L.init(this);
         // Never swallow touches: the screen must stay usable even if something stalls.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
     }
@@ -58,6 +60,7 @@ public class MainActivity extends Activity {
             showAssistant();
             return;
         }
+        L.i("press, busy=" + BUSY.get());
         if (!BUSY.compareAndSet(false, true)) {
             // A previous press is still talking to ADB; don't pile up work.
             close(0);
@@ -69,7 +72,7 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             boolean ok = false;
             try {
-                String out = AdbManager.get(app).runOnce(app, Commands.OPEN_CIRCLE_TO_SEARCH);
+                String out = AdbManager.runIsolated(app, Commands.OPEN_CIRCLE_TO_SEARCH, 8500);
                 ok = out != null && out.contains(Commands.SUCCESS);
             } catch (Exception ignored) {
                 // Fall back below.
@@ -82,7 +85,7 @@ public class MainActivity extends Activity {
     }
 
     // Leaves room for a reconnect plus restarting a stuck Google app.
-    private static final long ADB_TIMEOUT_MS = 6000;
+    private static final long ADB_TIMEOUT_MS = 10000;
     private volatile boolean adbDone;
 
     private void onAdbResult(boolean success, boolean timedOut) {
@@ -90,6 +93,7 @@ public class MainActivity extends Activity {
             return;
         }
         adbDone = true;
+        L.i("result success=" + success + " timedOut=" + timedOut);
         handler.removeCallbacksAndMessages(null);
         if (timedOut) {
             // Never lock the button out because of one stuck attempt.
@@ -117,6 +121,7 @@ public class MainActivity extends Activity {
         try {
             // Only works while this activity is in the foreground.
             shown = showAssist(null);
+            L.i("showAssist -> " + shown);
         } catch (RuntimeException ignored) {
             // Treated as "no assistant available" below.
         }

@@ -40,11 +40,13 @@ import java.security.cert.CertificateFactory;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Date;
 import java.util.Random;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import io.github.muntashirakon.adb.AbsAdbConnectionManager;
 import io.github.muntashirakon.adb.AdbStream;
+import io.github.muntashirakon.adb.android.AdbMdns;
 
 /**
  * Talks to this phone's own adbd over Wireless debugging, the way Shizuku does,
@@ -137,14 +139,19 @@ final class AdbManager extends AbsAdbConnectionManager {
     // ---------------------------------------------------------------- helpers
 
     /**
-     * Makes sure we are connected to adbd. If Wireless debugging was switched off
-     * (it is after every reboot), turns it back on when we hold WRITE_SECURE_SETTINGS.
+     * Opens a fresh connection to adbd. Long-lived connections go stale (Wi-Fi
+     * reconnects, adbd restarts) and then block forever, so every command gets its
+     * own connection. Order: remembered port, then mDNS discovery, then switching
+     * Wireless debugging back on (it is off after every reboot) when we hold
+     * WRITE_SECURE_SETTINGS.
      */
-    synchronized boolean ensureConnected(Context context) throws Exception {
-        if (isConnected()) {
+    synchronized boolean ensureConnected(Context context) {
+        reset();
+        int port = Prefs.getPort(context);
+        if (port > 0 && tryConnect(port)) {
             return true;
         }
-        if (tryConnect(context, 3000)) {
+        if (connectDiscovered(context)) {
             return true;
         }
         if (canWriteSecureSettings(context)) {
@@ -152,8 +159,8 @@ final class AdbManager extends AbsAdbConnectionManager {
             Settings.Global.putInt(resolver, "adb_enabled", 1);
             Settings.Global.putInt(resolver, "adb_wifi_enabled", 1);
             // adbd needs a moment to start listening and announce itself over mDNS.
-            for (int attempt = 0; attempt < 4; attempt++) {
-                if (tryConnect(context, 2500)) {
+            for (int attempt = 0; attempt < 3; attempt++) {
+                if (connectDiscovered(context)) {
                     return true;
                 }
             }
@@ -161,18 +168,49 @@ final class AdbManager extends AbsAdbConnectionManager {
         return false;
     }
 
-    private boolean tryConnect(Context context, long timeoutMs) {
-        try {
-            return connectTls(context, timeoutMs) || isConnected();
-        } catch (Exception e) {
-            return false;
+    private boolean connectDiscovered(Context context) {
+        int port = discoverPort(context, 2000);
+        if (port > 0 && tryConnect(port)) {
+            Prefs.setPort(context, port);
+            return true;
         }
+        return false;
     }
 
-    /**
-     * Drops the current connection, e.g. after Wi-Fi reconnected and the socket went
-     * stale. Unblocks threads waiting on it; the next call reconnects.
-     */
+    private boolean tryConnect(int port) {
+        try {
+            if (connect("127.0.0.1", port) || isConnected()) {
+                return true;
+            }
+        } catch (Exception ignored) {
+            // Port changed or adbd is off.
+        }
+        reset();
+        return false;
+    }
+
+    /** Finds adbd's current Wireless debugging port via mDNS, or -1. */
+    private static int discoverPort(Context context, long timeoutMs) {
+        AtomicInteger found = new AtomicInteger(-1);
+        CountDownLatch latch = new CountDownLatch(1);
+        AdbMdns mdns = new AdbMdns(context, AdbMdns.SERVICE_TYPE_TLS_CONNECT, (host, port) -> {
+            if (port > 0) {
+                found.set(port);
+                latch.countDown();
+            }
+        });
+        mdns.start();
+        try {
+            latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        } finally {
+            mdns.stop();
+        }
+        return found.get();
+    }
+
+    /** Closes the current connection, if any. */
     void reset() {
         try {
             disconnect();
@@ -182,25 +220,21 @@ final class AdbManager extends AbsAdbConnectionManager {
     }
 
     /**
-     * Runs a command, reconnecting once if the existing connection turns out to be dead.
+     * Connects, runs one command and disconnects.
      *
      * @return the command output, or null if ADB is unavailable.
      */
-    String run(Context context, String command, BooleanSupplier cancelled) {
-        for (int attempt = 0; attempt < 2; attempt++) {
-            if (cancelled.getAsBoolean()) {
+    synchronized String runOnce(Context context, String command) {
+        try {
+            if (!ensureConnected(context)) {
                 return null;
             }
-            try {
-                if (!ensureConnected(context)) {
-                    return null;
-                }
-                return shell(command);
-            } catch (Exception e) {
-                reset();
-            }
+            return shell(command);
+        } catch (Exception e) {
+            return null;
+        } finally {
+            reset();
         }
-        return null;
     }
 
     /** Runs a shell command over ADB and returns its output. */

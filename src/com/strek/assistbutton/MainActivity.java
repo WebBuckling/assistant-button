@@ -2,11 +2,16 @@ package com.strek.assistbutton;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.view.WindowManager;
 import android.widget.Toast;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * The button. Invisible: it opens Circle to Search (when set up with Wireless
@@ -14,8 +19,18 @@ import android.widget.Toast;
  */
 public class MainActivity extends Activity {
 
+    /** One ADB call at a time: extra presses while one is running are ignored. */
+    private static final AtomicBoolean BUSY = new AtomicBoolean(false);
+
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean triggered;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        // Never swallow touches: the screen must stay usable even if something stalls.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+    }
 
     @Override
     protected void onResume() {
@@ -43,15 +58,23 @@ public class MainActivity extends Activity {
             showAssistant();
             return;
         }
+        if (!BUSY.compareAndSet(false, true)) {
+            // A previous press is still talking to ADB; don't pile up work.
+            close(0);
+            return;
+        }
         // Watchdog: this invisible window must never stay on top of the screen.
         handler.postDelayed(() -> onAdbResult(false, true), ADB_TIMEOUT_MS);
+        Context app = getApplicationContext();
         new Thread(() -> {
             boolean ok = false;
             try {
-                String out = AdbManager.get(this).run(this, Commands.OPEN_CIRCLE_TO_SEARCH, () -> adbDone);
+                String out = AdbManager.get(app).runOnce(app, Commands.OPEN_CIRCLE_TO_SEARCH);
                 ok = out != null && out.contains(Commands.SUCCESS);
             } catch (Exception ignored) {
                 // Fall back below.
+            } finally {
+                BUSY.set(false);
             }
             boolean success = ok;
             runOnUiThread(() -> onAdbResult(success, false));
@@ -69,6 +92,8 @@ public class MainActivity extends Activity {
         adbDone = true;
         handler.removeCallbacksAndMessages(null);
         if (timedOut) {
+            // Never lock the button out because of one stuck attempt.
+            BUSY.set(false);
             // Kill the stuck connection so the next press starts fresh.
             new Thread(() -> {
                 try {

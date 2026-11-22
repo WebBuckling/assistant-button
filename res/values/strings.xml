@@ -2,4 +2,26 @@
 <resources>
     <string name="app_name">Assistant Button</string>
     <string name="choose_assistant">Choose a default digital assistant app first</string>
+    <string name="adb_unavailable">Wireless debugging unavailable, opening the assistant instead</string>
+
+    <string name="setup_name">Assistant Button setup</string>
+    <string name="status_paired">✅ Paired: the button opens Circle to Search</string>
+    <string name="status_not_paired">⚪ Not paired: the button opens the assistant overlay (it can\'t see the screen)</string>
+    <string name="status_autostart_on">✅ Turns Wireless debugging back on after a reboot</string>
+    <string name="status_autostart_off">⚪ After a reboot, turn on Wireless debugging manually</string>
+    <string name="setup_steps">One-time setup (needs Wi-Fi):\n\n1. Developer options → turn on Wireless debugging.\n2. Tap \"Start pairing\", then in Wireless debugging tap \"Pair device with pairing code\".\n3. A notification appears. Tap \"Enter code\" and type the 6-digit code shown in Settings.\n4. Make sure the Google app is the default digital assistant.\n5. Bind \"Assistant Button\" to your button (Honor: Settings → AI Button → Quick services).</string>
+    <string name="setup_open_dev">Open Developer options</string>
+    <string name="setup_pair">Start pairing</string>
+    <string name="setup_test">Test the button</string>
+    <string name="setup_note">The app only connects to this phone\'s own ADB, to open Circle to Search. Wireless debugging gives shell-level access, so pair only apps you trust.</string>
+
+    <string name="pair_channel">Pairing</string>
+    <string name="pair_searching">Waiting for the pairing dialog: Wireless debugging → Pair device with pairing code</string>
+    <string name="pair_found_title">Pairing dialog found</string>
+    <string name="pair_found_text">Tap \"Enter code\" and type the 6-digit code from Settings</string>
+    <string name="pair_enter_code">Enter code</string>
+    <string name="pair_code_hint">Pairing code</string>
+    <string name="pair_working">Pairing…</string>
+    <string name="pair_done">Paired! The button now opens Circle to Search.</string>
+    <string name="pair_failed">Pairing failed: %1$s. Try again with a new code.</string>
 </resources>

@@ -1,5 +1,7 @@
 # Build output
 build/
+.gradle/
+local.properties
 *.apk
 *.idsig
 

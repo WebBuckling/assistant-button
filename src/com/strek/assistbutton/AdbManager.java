@@ -40,6 +40,8 @@ import java.security.cert.CertificateFactory;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Date;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import io.github.muntashirakon.adb.AbsAdbConnectionManager;
 import io.github.muntashirakon.adb.AdbStream;
@@ -68,6 +70,8 @@ final class AdbManager extends AbsAdbConnectionManager {
 
     private AdbManager(Context context) throws Exception {
         setApi(Build.VERSION.SDK_INT);
+        // libadb waits forever by default; a stale connection must fail fast instead.
+        setTimeout(5, TimeUnit.SECONDS);
         File dir = context.getFilesDir();
         File keyFile = new File(dir, KEY_FILE);
         File certFile = new File(dir, CERT_FILE);
@@ -163,6 +167,40 @@ final class AdbManager extends AbsAdbConnectionManager {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * Drops the current connection, e.g. after Wi-Fi reconnected and the socket went
+     * stale. Unblocks threads waiting on it; the next call reconnects.
+     */
+    void reset() {
+        try {
+            disconnect();
+        } catch (Exception ignored) {
+            // Already gone.
+        }
+    }
+
+    /**
+     * Runs a command, reconnecting once if the existing connection turns out to be dead.
+     *
+     * @return the command output, or null if ADB is unavailable.
+     */
+    String run(Context context, String command, BooleanSupplier cancelled) {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            if (cancelled.getAsBoolean()) {
+                return null;
+            }
+            try {
+                if (!ensureConnected(context)) {
+                    return null;
+                }
+                return shell(command);
+            } catch (Exception e) {
+                reset();
+            }
+        }
+        return null;
     }
 
     /** Runs a shell command over ADB and returns its output. */

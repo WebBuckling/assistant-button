@@ -43,26 +43,47 @@ public class MainActivity extends Activity {
             showAssistant();
             return;
         }
+        // Watchdog: this invisible window must never stay on top of the screen.
+        handler.postDelayed(() -> onAdbResult(false, true), ADB_TIMEOUT_MS);
         new Thread(() -> {
             boolean ok = false;
             try {
-                AdbManager adb = AdbManager.get(this);
-                if (adb.ensureConnected(this)) {
-                    ok = adb.shell(Commands.CIRCLE_TO_SEARCH).contains(Commands.SUCCESS);
-                }
+                String out = AdbManager.get(this).run(this, Commands.OPEN_CIRCLE_TO_SEARCH, () -> adbDone);
+                ok = out != null && out.contains(Commands.SUCCESS);
             } catch (Exception ignored) {
                 // Fall back below.
             }
             boolean success = ok;
-            runOnUiThread(() -> {
-                if (success) {
-                    close(0);
-                } else {
-                    Toast.makeText(this, R.string.adb_unavailable, Toast.LENGTH_SHORT).show();
-                    showAssistant();
-                }
-            });
+            runOnUiThread(() -> onAdbResult(success, false));
         }, "circle-to-search").start();
+    }
+
+    // Leaves room for a reconnect plus restarting a stuck Google app.
+    private static final long ADB_TIMEOUT_MS = 6000;
+    private volatile boolean adbDone;
+
+    private void onAdbResult(boolean success, boolean timedOut) {
+        if (adbDone) {
+            return;
+        }
+        adbDone = true;
+        handler.removeCallbacksAndMessages(null);
+        if (timedOut) {
+            // Kill the stuck connection so the next press starts fresh.
+            new Thread(() -> {
+                try {
+                    AdbManager.get(getApplicationContext()).reset();
+                } catch (Exception ignored) {
+                    // Nothing to reset.
+                }
+            }, "adb-reset").start();
+        }
+        if (success) {
+            close(0);
+        } else {
+            Toast.makeText(this, R.string.adb_unavailable, Toast.LENGTH_SHORT).show();
+            showAssistant();
+        }
     }
 
     /** Opens the default assistant's overlay (no screen access for apps). */

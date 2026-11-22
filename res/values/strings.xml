@@ -9,7 +9,7 @@
     <string name="status_not_paired">⚪ Not paired: the button opens the assistant overlay (it can\'t see the screen)</string>
     <string name="status_autostart_on">✅ Turns Wireless debugging back on after a reboot</string>
     <string name="status_autostart_off">⚪ After a reboot, turn on Wireless debugging manually</string>
-    <string name="setup_steps">One-time setup (needs Wi-Fi):\n\n1. Developer options → turn on Wireless debugging.\n2. Tap \"Start pairing\", then in Wireless debugging tap \"Pair device with pairing code\".\n3. A notification appears. Tap \"Enter code\" and type the 6-digit code shown in Settings.\n4. Make sure the Google app is the default digital assistant.\n5. Bind \"Assistant Button\" to your button (Honor: Settings → AI Button → Quick services).</string>
+    <string name="setup_steps">One-time setup (needs Wi-Fi):\n\n1. Developer options → turn on Wireless debugging.\n   Honor/Huawei: also turn on \"Allow ADB debugging in charge only mode\", otherwise ADB stops when the cable is unplugged.\n2. Tap \"Start pairing\", then in Wireless debugging tap \"Pair device with pairing code\".\n3. A notification appears. Tap \"Enter code\" and type the 6-digit code shown in Settings.\n4. Make sure the Google app is the default digital assistant.\n5. Bind \"Assistant Button\" to your button (Honor: Settings → AI Button → Quick services).</string>
     <string name="setup_open_dev">Open Developer options</string>
     <string name="setup_pair">Start pairing</string>
     <string name="setup_test">Test the button</string>

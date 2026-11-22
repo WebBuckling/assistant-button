@@ -49,6 +49,9 @@ which can't see the screen.
    **Settings → Apps → Default apps → Digital assistant app → Google**.
 3. Open **Assistant Button setup** (the gear icon) and follow it:
    - Developer options → turn on **Wireless debugging** (tap *Always allow* on this network).
+   - **Honor / Huawei:** also turn on **Allow ADB debugging in charge only mode** in Developer
+     options. Without it, MagicOS stops `adbd` entirely when the USB cable is unplugged, which
+     kills the helper and turns Wireless debugging off.
    - Tap **Start pairing**, then in Wireless debugging tap **Pair device with pairing code**.
    - Without closing that dialog, pull down the notification shade. In the Assistant Button
      notification tap **Enter code** and type the 6-digit code.

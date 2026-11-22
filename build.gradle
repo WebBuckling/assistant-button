@@ -11,8 +11,8 @@ android {
         // Wireless-debugging pairing needs Android 11 (API 30).
         minSdk 30
         targetSdk 36
-        versionCode 13
-        versionName '3.3'
+        versionCode 14
+        versionName '3.4'
     }
 
     // Keep the original flat layout (manifest, src/, res/ at the root).

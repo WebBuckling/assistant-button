@@ -22,18 +22,25 @@ So Gemini opens, but it can't see your screen.
 
 Android does give the screenshot to the assistant when the session is shown with the
 `SHOW_WITH_SCREENSHOT` flags, but only callers with shell (adb) privileges can pass them.
-Assistant Button gets those privileges the same way Shizuku does: it pairs with the phone's
-own **Wireless debugging** and talks to `adbd` over localhost. On each press it runs:
+Assistant Button gets those privileges the same way Shizuku does, but inside one app:
 
-```
-service call voiceinteraction 3 null <Bundle{omni.entry_point=1}> 7 <tag>
-```
+1. It pairs with the phone's own **Wireless debugging** and talks to `adbd` over localhost.
+2. Over ADB it starts a small **background helper**: its own code, run with
+   `app_process` as the shell user. The helper hands the app a Binder through a protected
+   ContentProvider, as the Shizuku server does.
+3. Each press asks the helper to run:
 
-That is `IVoiceInteractionManagerService.showSessionFromSession`, and it opens Google's
-**Circle to Search** with a real screenshot. MiCTS does the same thing through Shizuku.
+   ```
+   service call voiceinteraction 3 null <Bundle{omni.entry_point=1}> 7 <tag>
+   ```
 
-If Wireless debugging is unavailable (no Wi-Fi, not paired), the button falls back to the
-assistant's floating overlay, which can't see the screen.
+   That is `IVoiceInteractionManagerService.showSessionFromSession`, and it opens Google's
+   **Circle to Search** with a real screenshot. MiCTS does the same thing through Shizuku.
+
+The helper runs until the phone reboots, so **presses don't need Wi-Fi**. After a reboot,
+the first press with Wi-Fi on starts it again, switching Wireless debugging on if needed.
+If that isn't possible (no Wi-Fi yet), the button opens the assistant's floating overlay,
+which can't see the screen.
 
 ## Setup (one time, needs Wi-Fi)
 
@@ -65,9 +72,11 @@ restart the server.
 
 ## Security
 
-Wireless debugging gives shell-level access. This app uses it only to open Circle to Search
-and to grant itself `WRITE_SECURE_SETTINGS`. Its ADB key is stored in the app's private
-storage. To revoke access: Wireless debugging → paired devices → forget *AssistantButton*,
+Wireless debugging gives shell-level access. This app uses it only to open Circle to Search,
+to start its helper, and to grant itself `WRITE_SECURE_SETTINGS`. Its ADB key is stored in
+the app's private storage. The helper serves only this app's UID. Its ContentProvider requires
+`INTERACT_ACROSS_USERS_FULL`, which only shell and the system hold. It exits when the app is
+updated or removed. To revoke access: Wireless debugging → paired devices → forget *AssistantButton*,
 or turn Wireless debugging off.
 
 ## Build

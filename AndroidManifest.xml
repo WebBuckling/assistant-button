@@ -62,5 +62,13 @@
         <receiver
             android:name=".PairingService$CodeReceiver"
             android:exported="false" />
+
+        <!-- The shell-privileged Helper hands its Binder over here. Only shell/system
+             hold INTERACT_ACROSS_USERS_FULL, so other apps can't call it. -->
+        <provider
+            android:name=".HelperProvider"
+            android:authorities="com.strek.assistbutton.helper"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>
 </manifest>

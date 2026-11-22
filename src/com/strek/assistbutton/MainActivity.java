@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
@@ -72,16 +73,50 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             boolean ok = false;
             try {
-                String out = AdbManager.runIsolated(app, Commands.OPEN_CIRCLE_TO_SEARCH, 8500);
-                ok = out != null && out.contains(Commands.SUCCESS);
-            } catch (Exception ignored) {
-                // Fall back below.
+                ok = openCircleToSearch(app);
+            } catch (Exception e) {
+                L.i("open failed: " + e);
             } finally {
                 BUSY.set(false);
             }
             boolean success = ok;
             runOnUiThread(() -> onAdbResult(success, false));
         }, "circle-to-search").start();
+    }
+
+    /**
+     * 1) Ask the background helper (no Wi-Fi, no ADB needed).
+     * 2) If it isn't running (first press after a reboot, or after an app update),
+     *    start it over ADB and open Circle to Search in the same shell call.
+     */
+    private static boolean openCircleToSearch(Context app) {
+        // The helper sends its Binder as soon as our process starts.
+        IBinder helper = HelperClient.await(1200);
+        if (helper != null) {
+            int version = HelperClient.ping(helper);
+            if (version == Helper.VERSION) {
+                String reply = HelperClient.openCircleToSearch(helper);
+                L.i("helper: " + reply);
+                if ("ok".equals(reply)) {
+                    return true;
+                }
+                if (reply != null && reply.startsWith("fail")) {
+                    // Helper is alive; Circle to Search itself refused. ADB won't do better.
+                    return false;
+                }
+            } else if (version > 0) {
+                L.i("outdated helper v" + version + ", stopping it");
+                HelperClient.exit(helper);
+            }
+        } else {
+            L.i("no helper binder");
+        }
+        String apk = app.getApplicationInfo().sourceDir;
+        int uid = app.getApplicationInfo().uid;
+        String out = AdbManager.runIsolated(app,
+                Helper.startCommand(apk, uid) + " " + Commands.OPEN_CIRCLE_TO_SEARCH, 8500);
+        L.i("adb start+cts: " + (out == null ? "null" : out.trim()));
+        return out != null && out.contains(Commands.SUCCESS);
     }
 
     // Leaves room for a reconnect plus restarting a stuck Google app.
@@ -125,7 +160,10 @@ public class MainActivity extends Activity {
         } catch (RuntimeException ignored) {
             // Treated as "no assistant available" below.
         }
-        if (!shown) {
+        // showAssist() also returns false when we've lost focus (e.g. after a slow
+        // attempt), so only send the user to the picker if no assistant is set at all.
+        String assistant = Settings.Secure.getString(getContentResolver(), "assistant");
+        if (!shown && (assistant == null || assistant.isEmpty())) {
             Toast.makeText(this, R.string.choose_assistant, Toast.LENGTH_LONG).show();
             try {
                 startActivity(new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
